@@ -1,73 +1,79 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
-export function useInView<T extends HTMLElement>(threshold = 0.12) {
-  const ref = useRef<T>(null)
-  const [inView, setInView] = useState(false)
-
-  useEffect(() => {
-    const element = ref.current
-    if (!element) return
-
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        if (entry.isIntersecting) {
-          setInView(true)
-          observer.unobserve(element)
-        }
-      },
-      { threshold },
-    )
-
-    observer.observe(element)
-    return () => observer.disconnect()
-  }, [threshold])
-
-  return { ref, inView }
-}
-
-export function useScrollSpy(sectionIds: string[]) {
-  const [activeId, setActiveId] = useState(sectionIds[0])
+/** True once the page has scrolled past `threshold` pixels. */
+export function useScrolled(threshold = 24): boolean {
+  const [scrolled, setScrolled] = useState(false)
 
   useEffect(() => {
-    const sections = sectionIds
-      .map((id) => document.getElementById(id.replace('#', '')))
-      .filter((section): section is HTMLElement => section !== null)
-
-    const onScroll = () => {
-      const position = window.scrollY + 140
-      let current = sectionIds[0]
-
-      for (const section of sections) {
-        if (section.offsetTop <= position) {
-          current = `#${section.id}`
-        }
-      }
-
-      setActiveId(current)
-    }
-
+    const onScroll = () => setScrolled(window.scrollY > threshold)
     onScroll()
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
-  }, [sectionIds])
+  }, [threshold])
 
-  return activeId
+  return scrolled
 }
 
-export function useScrollProgress() {
+/** Reading progress from 0 to 1, updated on a rAF to avoid layout thrash. */
+export function useScrollProgress(): number {
   const [progress, setProgress] = useState(0)
 
   useEffect(() => {
-    const onScroll = () => {
-      const scrollTop = window.scrollY
-      const docHeight = document.documentElement.scrollHeight - window.innerHeight
-      setProgress(docHeight > 0 ? (scrollTop / docHeight) * 100 : 0)
+    let frame = 0
+
+    const update = () => {
+      frame = 0
+      const scrollable = document.documentElement.scrollHeight - window.innerHeight
+      setProgress(scrollable > 0 ? Math.min(1, window.scrollY / scrollable) : 0)
     }
 
-    onScroll()
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(update)
+    }
+
+    update()
     window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
+    window.addEventListener('resize', onScroll, { passive: true })
+    return () => {
+      window.removeEventListener('scroll', onScroll)
+      window.removeEventListener('resize', onScroll)
+      if (frame) cancelAnimationFrame(frame)
+    }
   }, [])
 
   return progress
+}
+
+/**
+ * Which section id is currently in view. Drives the nav highlight.
+ * The root margin biases the "active" line to roughly a third down the viewport.
+ */
+export function useActiveSection(ids: string[]): string {
+  const [active, setActive] = useState(ids[0] ?? '')
+  const key = ids.join(',')
+
+  useEffect(() => {
+    const elements = key
+      .split(',')
+      .map((id) => document.getElementById(id))
+      .filter((element): element is HTMLElement => element !== null)
+
+    if (elements.length === 0) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((entry) => entry.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]
+
+        if (visible) setActive(visible.target.id)
+      },
+      { rootMargin: '-30% 0px -55% 0px', threshold: [0, 0.25, 0.5, 1] },
+    )
+
+    elements.forEach((element) => observer.observe(element))
+    return () => observer.disconnect()
+  }, [key])
+
+  return active
 }

@@ -1,19 +1,23 @@
 import { useEffect, useState } from 'react'
-import { navLinks, profile } from '../data/portfolio'
-import { useScrollSpy } from '../hooks/useScroll'
+import profilePhoto from '../assets/profile.jpg'
+import { useLanguage } from '../contexts/LanguageContext'
+import { useContent } from '../contexts/ContentContext'
+import { useActiveSection, useScrolled } from '../hooks/useScroll'
+import { navLinks } from '../data/portfolio'
+import LanguageToggle from './LanguageToggle'
+import ThemeToggle from './ThemeToggle'
+import { IconClose, IconMenu } from './Icons'
+
+const SECTION_IDS = navLinks.map((link) => link.href.slice(1))
 
 export default function Header() {
-  const [scrolled, setScrolled] = useState(false)
+  const { t } = useLanguage()
+  const { profile } = useContent()
+  const scrolled = useScrolled(20)
+  const active = useActiveSection(SECTION_IDS)
   const [menuOpen, setMenuOpen] = useState(false)
-  const activeId = useScrollSpy(navLinks.map((link) => link.href))
 
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 24)
-    window.addEventListener('scroll', onScroll, { passive: true })
-    onScroll()
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
-
+  // Lock body scroll while the mobile drawer is open.
   useEffect(() => {
     document.body.style.overflow = menuOpen ? 'hidden' : ''
     return () => {
@@ -21,66 +25,93 @@ export default function Header() {
     }
   }, [menuOpen])
 
-  const closeMenu = () => setMenuOpen(false)
+  // A resize past the mobile breakpoint should not leave the drawer stuck open.
+  useEffect(() => {
+    const media = window.matchMedia('(min-width: 861px)')
+    const onChange = () => media.matches && setMenuOpen(false)
+    media.addEventListener('change', onChange)
+    return () => media.removeEventListener('change', onChange)
+  }, [])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [])
 
   return (
     <>
       <header className={`header ${scrolled ? 'header--scrolled' : ''}`}>
         <div className="container header__inner">
-          <a href="#home" className="header__logo" onClick={closeMenu}>
-            <span className="header__avatar">{profile.initials}</span>
-            <span className="header__logo-text">{profile.name}</span>
+          <a href="#home" className="brand" onClick={() => setMenuOpen(false)}>
+            <span className="brand__mark">
+              <img src={profilePhoto} alt={profile.name} />
+            </span>
+            <span className="brand__name">
+              {profile.name}
+              <span className="brand__dot">.</span>
+            </span>
           </a>
 
-          <nav
-            id="site-nav"
-            className={`header__nav ${menuOpen ? 'header__nav--open' : ''}`}
-            aria-label="Asosiy navigatsiya"
-          >
-            <ul className="header__links">
-              {navLinks.map((link) => (
-                <li key={link.href}>
-                  <a
-                    href={link.href}
-                    className={activeId === link.href ? 'is-active' : ''}
-                    onClick={closeMenu}
-                    aria-current={activeId === link.href ? 'page' : undefined}
-                  >
-                    {link.label}
-                  </a>
-                </li>
-              ))}
-            </ul>
-            <a href="#contact" className="btn btn--primary header__cta-mobile" onClick={closeMenu}>
-              Bog'lanish
-            </a>
+          <nav className="nav" aria-label={t('nav.aria')}>
+            {navLinks.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                className={`nav__link ${
+                  active === link.href.slice(1) ? 'nav__link--active' : ''
+                }`}
+                aria-current={active === link.href.slice(1) ? 'true' : undefined}
+              >
+                {t(link.key)}
+              </a>
+            ))}
           </nav>
 
-          <a href="#contact" className="btn btn--primary header__cta">
-            Bog'lanish
-          </a>
-
-          <button
-            type="button"
-            className={`header__burger ${menuOpen ? 'header__burger--open' : ''}`}
-            aria-label={menuOpen ? 'Menyuni yopish' : 'Menyuni ochish'}
-            aria-expanded={menuOpen}
-            aria-controls="site-nav"
-            onClick={() => setMenuOpen((open) => !open)}
-          >
-            <span />
-            <span />
-            <span />
-          </button>
+          <div className="header__actions">
+            <LanguageToggle />
+            <ThemeToggle />
+            <a href="#contact" className="btn btn--primary btn--sm nav-cta">
+              {t('nav.cta')}
+            </a>
+            <button
+              type="button"
+              className="icon-btn header__burger"
+              onClick={() => setMenuOpen((value) => !value)}
+              aria-label={menuOpen ? t('nav.menu.close') : t('nav.menu.open')}
+              aria-expanded={menuOpen}
+            >
+              {menuOpen ? <IconClose size={18} /> : <IconMenu size={18} />}
+            </button>
+          </div>
         </div>
       </header>
 
-      <button
-        type="button"
-        className={`header__overlay ${menuOpen ? 'header__overlay--visible' : ''}`}
-        aria-label="Menyuni yopish"
-        onClick={closeMenu}
-      />
+      {menuOpen && (
+        <div className="drawer" id="mobile-menu">
+          {navLinks.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              className={`drawer__link ${
+                active === link.href.slice(1) ? 'drawer__link--active' : ''
+              }`}
+              onClick={() => setMenuOpen(false)}
+            >
+              {t(link.key)}
+            </a>
+          ))}
+          <a
+            href="#contact"
+            className="btn btn--primary btn--block drawer__cta"
+            onClick={() => setMenuOpen(false)}
+          >
+            {t('nav.cta')}
+          </a>
+        </div>
+      )}
     </>
   )
 }
